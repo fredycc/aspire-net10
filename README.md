@@ -85,7 +85,7 @@ dotnet run
 Or explicitly:
 
 ```bash
-dotnet run --launch-profile https --project src/Aspire.AppHost
+dotnet run --launch-profile dev_https --project src/Aspire.AppHost
 ```
 
 Starts **PostgreSQL + Web.Api + Aspire Dashboard** only. No Loki, no Grafana — zero overhead. Logs go to the Aspire Dashboard.
@@ -102,7 +102,7 @@ Starts **PostgreSQL + Web.Api + Aspire Dashboard** only. No Loki, no Grafana —
 Starts **PostgreSQL + Web.Api + Loki + Grafana**. The Web.Api sends OTLP logs to Loki automatically. The Aspire Dashboard also sends telemetry to Loki.
 
 ```bash
-dotnet run --launch-profile Production --project src/Aspire.AppHost
+dotnet run --launch-profile prod_https --project src/Aspire.AppHost
 ```
 
 | Service | URL | Credentials |
@@ -118,15 +118,15 @@ In Grafana → **Explore** → select **Loki** datasource → query your logs.
 
 | Profile | Environment | Transport | Stack | Use case |
 |---------|-------------|-----------|-------|----------|
-| `https` | Development | HTTPS | PostgreSQL + Web.Api + Aspire Dashboard | Default for daily development |
-| `http` | Development | HTTP | PostgreSQL + Web.Api + Aspire Dashboard | When dev certificate isn't trusted or HTTPS causes issues |
-| `Production` | Production | HTTPS | PostgreSQL + Web.Api + Loki + Grafana + Aspire Dashboard | Full production-like environment with observability |
-| `Productionhttp` | Production | HTTP | Same as `Production` | When HTTPS isn't needed (local testing, CI) |
+| `dev_https` | Development | HTTPS | PostgreSQL + Web.Api + Aspire Dashboard | Default for daily development |
+| `dev_http` | Development | HTTP | PostgreSQL + Web.Api + Aspire Dashboard | When dev certificate isn't trusted or HTTPS causes issues |
+| `prod_https` | Production | HTTPS | PostgreSQL + Web.Api + Loki + Grafana + Aspire Dashboard | Full production-like environment with observability |
+| `prod_http` | Production | HTTP | Same as `prod_https` | When HTTPS isn't needed (local testing, CI) |
 
-##### `https` (Development)
+##### `dev_https` (Development)
 
 ```bash
-dotnet run --launch-profile https --project src/Aspire.AppHost
+dotnet run --launch-profile dev_https --project src/Aspire.AppHost
 ```
 
 - **Environment**: `ASPNETCORE_ENVIRONMENT=Development`, `DOTNET_ENVIRONMENT=Development`
@@ -137,13 +137,13 @@ dotnet run --launch-profile https --project src/Aspire.AppHost
 
 This is the default profile. Use it unless you have a reason not to.
 
-##### `http` (Development)
+##### `dev_http` (Development)
 
 ```bash
-dotnet run --launch-profile http --project src/Aspire.AppHost
+dotnet run --launch-profile dev_http --project src/Aspire.AppHost
 ```
 
-- **Environment**: same as `https`
+- **Environment**: same as `dev_https`
 - **Dashboard OTLP**: `ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL=http://localhost:19291` (HTTP, no TLS)
 - **Resource service**: `ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL=http://localhost:20183`
 - **No HTTPS** — dashboard and resource service use plain HTTP
@@ -153,10 +153,10 @@ Use when:
 - Working in an environment where HTTPS causes certificate errors
 - Debugging TLS-related issues
 
-##### `Production`
+##### `prod_https` (Production)
 
 ```bash
-dotnet run --launch-profile Production --project src/Aspire.AppHost
+dotnet run --launch-profile prod_https --project src/Aspire.AppHost
 ```
 
 - **Environment**: `ASPNETCORE_ENVIRONMENT=Production`, `DOTNET_ENVIRONMENT=Production`
@@ -169,19 +169,19 @@ dotnet run --launch-profile Production --project src/Aspire.AppHost
 
 Use when testing the production pipeline locally: Loki ingestion, Grafana dashboards, OTLP export.
 
-##### `Productionhttp`
+##### `prod_http` (Production)
 
 ```bash
-dotnet run --launch-profile Productionhttp --project src/Aspire.AppHost
+dotnet run --launch-profile prod_http --project src/Aspire.AppHost
 ```
 
-- Same as `Production` but without HTTPS on the application URL
+- Same as `prod_https` but without HTTPS on the application URL
 - **Transport flag**: `ASPIRE_ALLOW_UNSECURED_TRANSPORT=true`
 - Useful for CI pipelines or environments where HTTPS isn't needed
 
 ##### Key differences at a glance
 
-| Feature | `https` | `http` | `Production` | `Productionhttp` |
+| Feature | `dev_https` | `dev_http` | `prod_https` | `prod_http` |
 |---------|---------|--------|--------------|------------------|
 | Environment | Development | Development | Production | Production |
 | HTTPS | ✅ | ❌ | ✅ | ❌ |
@@ -198,10 +198,10 @@ dotnet run --launch-profile Productionhttp --project src/Aspire.AppHost
 
 ```bash
 # Development
-dotnet run --launch-profile https --project src/Aspire.AppHost
+dotnet run --launch-profile dev_https --project src/Aspire.AppHost
 
 # Production
-dotnet run --launch-profile Production --project src/Aspire.AppHost
+dotnet run --launch-profile prod_https --project src/Aspire.AppHost
 ```
 
 #### Alternative: Docker Compose (Loki + Grafana only)
@@ -253,10 +253,10 @@ dotnet test CleanArchitecture.sln
 | Dashboard loads but shows gRPC / circuit errors | Same as above — SSL cert issue | `dotnet dev-certs https --trust` |
 | `web-api` never starts / hangs at `WaitFor` | Docker containers failed to start | Check Docker is running, check port 5432 is free |
 | Port 5432 in use | Local PostgreSQL already running | Stop it or change port in `AppHost/Program.cs` |
-| Loki not receiving logs in prod | Loki container not running or not healthy | Run with `--launch-profile Production`. Check `docker compose logs loki` if using Compose |
+| Loki not receiving logs in prod | Loki container not running or not healthy | Run with `--launch-profile prod_https`. Check `docker compose logs loki` if using Compose |
 | Grafana shows no datasources | Provisioning volume not mounted (Compose) or env var missing (AppHost) | Compose: ensure `.containers/loki-grafana/provisioning/` exists. AppHost: the datasource is configured via `GF_DATASOURCES_LDAP_SECRET_JSON` env var — no volume needed |
-| `ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL not set` error | Running with wrong or missing launch profile | Use `--launch-profile Production` or `--launch-profile https`. The profile sets all required OTLP env vars automatically |
-| `applicationUrl must be https` error | Using HTTP-only profile without `ASPIRE_ALLOW_UNSECURED_TRANSPORT` | Use `--launch-profile Production` (HTTPS) or `--launch-profile Productionhttp` (HTTP with transport flag) |
+| `ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL not set` error | Running with wrong or missing launch profile | Use `--launch-profile prod_https` or `--launch-profile dev_https`. The profile sets all required OTLP env vars automatically |
+| `applicationUrl must be https` error | Using HTTP-only profile without `ASPIRE_ALLOW_UNSECURED_TRANSPORT` | Use `--launch-profile prod_https` (HTTPS) or `--launch-profile prod_http` (HTTP with transport flag) |
 | JWT validation fails | Secret not generated or expired | `dotnet user-jwts create --project src/Web.Api` |
 | Build fails with missing Aspire types | Aspire workload not installed | `dotnet workload install aspire` |
 | `fail` log about `__EFMigrationsHistory` on first run | EF Core tries to read migrations table before it exists — expected behavior | No action needed. Table is created automatically and migrations apply correctly. Only happens on first run with a clean database. |

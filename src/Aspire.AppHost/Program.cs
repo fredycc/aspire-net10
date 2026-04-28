@@ -2,11 +2,14 @@ using Microsoft.Extensions.Hosting;
 
 IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
 
+IResourceBuilder<ParameterResource> postgresPassword = builder.AddParameter("postgres-password", "postgres");
+
 IResourceBuilder<PostgresDatabaseResource> database = builder
     .AddPostgres("database")
     .WithImage("postgres:17")
     .WithBindMount("../../.containers/db/init.sql", "/docker-entrypoint-initdb.d/init.sql")
     .WithDataVolume()
+    .WithPassword(postgresPassword)
     .AddDatabase("clean-architecture");
 
 if (!builder.Environment.IsDevelopment())
