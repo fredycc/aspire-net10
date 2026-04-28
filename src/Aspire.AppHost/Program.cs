@@ -3,7 +3,8 @@ IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(ar
 IResourceBuilder<PostgresDatabaseResource> database = builder
     .AddPostgres("database")
     .WithImage("postgres:17")
-    .WithBindMount("../../.containers/db", "/var/lib/postgresql/data")
+    .WithBindMount("../../.containers/db/init.sql", "/docker-entrypoint-initdb.d/init.sql")
+    .WithDataVolume()
     .AddDatabase("clean-architecture");
 
 IResourceBuilder<SeqResource> seq = builder.AddSeq("seq")
