@@ -13,8 +13,10 @@ What's included in the template?
   - Permission authorization
   - EF Core, PostgreSQL
   - Serilog
-- Seq for searching and analyzing structured logs
-  - Seq is available at http://localhost:5341 by default
+- Grafana Loki for production-grade log persistence (open-source alternative to Seq)
+  - Loki receives OTLP logs directly — no adapter needed
+  - Grafana UI available at http://localhost:3000 in production mode
+  - In development, only Aspire Dashboard runs (zero overhead)
 - Testing projects
   - Architecture testing
 
@@ -23,10 +25,10 @@ What's included in the template?
 | Requirement | Why | Install |
 |-------------|-----|---------|
 | [.NET 10 SDK](https://dotnet.microsoft.com/download) | Runtime and build tooling | [Download](https://dotnet.microsoft.com/download) |
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | **Required** — PostgreSQL and Seq run as containers | [Download](https://www.docker.com/products/docker-desktop/) · Enable WSL 2 backend during install |
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | **Required** — PostgreSQL runs as container; Loki+Grafana for production telemetry | [Download](https://www.docker.com/products/docker-desktop/) · Enable WSL 2 backend during install |
 | [Aspire workload](https://learn.microsoft.com/en-us/dotnet/aspire/fundamentals/setup-tooling) | Aspire orchestration SDK | `dotnet workload install aspire` |
 
-> **Docker is mandatory**, not optional. The AppHost starts PostgreSQL and Seq as containers — without Docker they never launch and `web-api` hangs waiting for them.
+> **Docker is mandatory**, not optional. The AppHost starts PostgreSQL as a container — without Docker it never launches and `web-api` hangs waiting for it. For production telemetry, Loki and Grafana also run as containers.
 
 ## Getting Started
 
@@ -69,30 +71,84 @@ dotnet user-jwts create --project src/Web.Api
 
 This stores the secret in your local user-secrets store — never committed to source control.
 
-### 6. Start the application via Aspire AppHost
+### 6. Start the application
+
+The AppHost uses **launch profiles** to switch between modes. Both modes set `DOTNET_ENVIRONMENT` and `ASPNETCORE_ENVIRONMENT` automatically — no manual env vars needed.
+
+#### Development mode (default)
 
 ```bash
 cd src/Aspire.AppHost
 dotnet run
 ```
 
-This will automatically:
-- Start PostgreSQL container with data persisted in `.containers/db/`
-- Start Seq container for structured log aggregation
-- Launch the Web.Api project
-- Configure OpenTelemetry and health checks
+Or explicitly:
 
-### 7. Access the services
+```bash
+dotnet run --launch-profile https --project src/Aspire.AppHost
+```
+
+Starts **PostgreSQL + Web.Api + Aspire Dashboard** only. No Loki, no Grafana — zero overhead. Logs go to the Aspire Dashboard.
 
 | Service | URL |
 |---------|-----|
 | Web.Api | http://localhost:8080 |
-| Seq (logs) | http://localhost:5341 |
-| Aspire Dashboard | https://localhost:17168 (URL shown in console output) |
+| Aspire Dashboard | https://localhost:17168 (URL shown in console) |
 
-> The dashboard URL changes on each run — use the one printed in the console after `dotnet run`.
+> The dashboard URL changes on each run — use the one printed in the console.
 
-### 8. Verify health
+#### Production mode
+
+Starts **PostgreSQL + Web.Api + Loki + Grafana**. The Web.Api sends OTLP logs to Loki automatically. The Aspire Dashboard also sends telemetry to Loki.
+
+```bash
+dotnet run --launch-profile Production --project src/Aspire.AppHost
+```
+
+| Service | URL | Credentials |
+|---------|-----|-------------|
+| Web.Api | http://localhost:8080 | — |
+| Aspire Dashboard | https://localhost:17168 | — |
+| Grafana | http://localhost:3000 | admin / admin |
+| Loki | http://localhost:3100 | — |
+
+In Grafana → **Explore** → select **Loki** datasource → query your logs.
+
+#### Available launch profiles
+
+| Profile | Environment | Transport | Description |
+|---------|-------------|-----------|-------------|
+| `https` | Development | HTTPS | Default dev mode with HTTPS dashboard |
+| `http` | Development | HTTP | Dev mode without HTTPS (for environments without trusted cert) |
+| `Production` | Production | HTTPS | Full stack with Loki + Grafana |
+| `Productionhttp` | Production | HTTP | Same as Production, HTTP only |
+
+#### Switching modes
+
+1. **Stop** the running AppHost (`Ctrl+C`)
+2. **Restart** with a different profile:
+
+```bash
+# Development
+dotnet run --launch-profile https --project src/Aspire.AppHost
+
+# Production
+dotnet run --launch-profile Production --project src/Aspire.AppHost
+```
+
+#### Alternative: Docker Compose (Loki + Grafana only)
+
+If you want to run Loki + Grafana separately and point Web.Api manually:
+
+```powershell
+docker compose -f .containers/loki-grafana/docker-compose.yml up -d
+$env:ASPNETCORE_ENVIRONMENT = "Production"
+dotnet run --project src/Web.Api
+```
+
+> **Note**: Datasource config lives in two places — `Program.cs` (env var for AppHost) and `provisioning/datasources/loki.yaml` (for Compose). If you change one, update the other.
+
+### 7. Verify health
 
 ```bash
 curl http://localhost:8080/health
@@ -127,9 +183,12 @@ dotnet test CleanArchitecture.sln
 | `Container runtime 'docker' could not be found` | Docker Desktop not installed or not running | Install Docker Desktop, start it, wait for "Engine running" |
 | `UntrustedRoot` SSL errors in console | Dev certificate not trusted | `dotnet dev-certs https --trust` |
 | Dashboard loads but shows gRPC / circuit errors | Same as above — SSL cert issue | `dotnet dev-certs https --trust` |
-| `web-api` never starts / hangs at `WaitFor` | Docker containers failed to start | Check Docker is running, check ports 5432 and 5341 are free |
+| `web-api` never starts / hangs at `WaitFor` | Docker containers failed to start | Check Docker is running, check port 5432 is free |
 | Port 5432 in use | Local PostgreSQL already running | Stop it or change port in `AppHost/Program.cs` |
-| Port 5341 in use | Local Seq already running | Stop it or change port in `AppHost/Program.cs` |
+| Loki not receiving logs in prod | Loki container not running or not healthy | Run with `--launch-profile Production`. Check `docker compose logs loki` if using Compose |
+| Grafana shows no datasources | Provisioning volume not mounted (Compose) or env var missing (AppHost) | Compose: ensure `.containers/loki-grafana/provisioning/` exists. AppHost: the datasource is configured via `GF_DATASOURCES_LDAP_SECRET_JSON` env var — no volume needed |
+| `ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL not set` error | Running with wrong or missing launch profile | Use `--launch-profile Production` or `--launch-profile https`. The profile sets all required OTLP env vars automatically |
+| `applicationUrl must be https` error | Using HTTP-only profile without `ASPIRE_ALLOW_UNSECURED_TRANSPORT` | Use `--launch-profile Production` (HTTPS) or `--launch-profile Productionhttp` (HTTP with transport flag) |
 | JWT validation fails | Secret not generated or expired | `dotnet user-jwts create --project src/Web.Api` |
 | Build fails with missing Aspire types | Aspire workload not installed | `dotnet workload install aspire` |
 | `fail` log about `__EFMigrationsHistory` on first run | EF Core tries to read migrations table before it exists — expected behavior | No action needed. Table is created automatically and migrations apply correctly. Only happens on first run with a clean database. |

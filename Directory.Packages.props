@@ -35,7 +35,6 @@
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <!--Aspire AppHost-->
     <PackageVersion Include="Aspire.Hosting.AppHost" Version="13.2.4" />
-    <PackageVersion Include="Aspire.Hosting.Seq" Version="13.2.4" />
     <!--Aspire ServiceDefaults-->
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.5.0" />
     <PackageVersion Include="Microsoft.Extensions.ServiceDiscovery" Version="10.5.0" />
