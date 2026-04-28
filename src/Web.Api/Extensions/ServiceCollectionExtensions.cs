@@ -1,46 +1,28 @@
 ﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.OpenApi.Models;
+using NSwag.Generation.Processors.Security;
 
 namespace Web.Api.Extensions;
 
 internal static class ServiceCollectionExtensions
 {
-    internal static IServiceCollection AddSwaggerGenWithAuth(this IServiceCollection services)
+    internal static IServiceCollection AddOpenApiDocumentWithAuth(this IServiceCollection services)
     {
-        services.AddSwaggerGen(o =>
+        services.AddOpenApiDocument(options =>
         {
-            o.CustomSchemaIds(id => id.FullName!.Replace('+', '-'));
+            options.Title = "aspire-net10 API";
+            options.Version = "v1";
 
-            var securityScheme = new OpenApiSecurityScheme
+            options.AddSecurity("Bearer", Enumerable.Empty<string>(), new NSwag.OpenApiSecurityScheme
             {
-                Name = "JWT Authentication",
-                Description = "Enter your JWT token in this field",
-                In = ParameterLocation.Header,
-                Type = SecuritySchemeType.Http,
+                Type = NSwag.OpenApiSecuritySchemeType.Http,
                 Scheme = JwtBearerDefaults.AuthenticationScheme,
-                BearerFormat = "JWT"
-            };
+                BearerFormat = "JWT",
+                Description = "Enter your JWT token"
+            });
 
-            o.AddSecurityDefinition(JwtBearerDefaults.AuthenticationScheme, securityScheme);
-
-            var securityRequirement = new OpenApiSecurityRequirement
-            {
-                {
-                    new OpenApiSecurityScheme
-                    {
-                        Reference = new OpenApiReference
-                        {
-                            Type = ReferenceType.SecurityScheme,
-                            Id = JwtBearerDefaults.AuthenticationScheme
-                        }
-                    },
-                    []
-                }
-            };
-
-            o.AddSecurityRequirement(securityRequirement);
+            options.OperationProcessors.Add(
+                new AspNetCoreOperationSecurityScopeProcessor("Bearer"));
         });
-
         return services;
     }
 }

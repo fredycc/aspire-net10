@@ -2,11 +2,13 @@
 
 public static class ApplicationBuilderExtensions
 {
-    public static IApplicationBuilder UseSwaggerWithUi(this WebApplication app)
+    public static IApplicationBuilder UseOpenApiWithUi(this WebApplication app)
     {
-        app.UseSwagger();
-        app.UseSwaggerUI();
-
+        app.UseOpenApi();
+        app.UseSwaggerUi(settings =>
+        {
+            settings.Path = "/swagger";
+        });
         return app;
     }
 }
