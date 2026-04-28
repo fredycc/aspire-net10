@@ -116,12 +116,80 @@ In Grafana → **Explore** → select **Loki** datasource → query your logs.
 
 #### Available launch profiles
 
-| Profile | Environment | Transport | Description |
-|---------|-------------|-----------|-------------|
-| `https` | Development | HTTPS | Default dev mode with HTTPS dashboard |
-| `http` | Development | HTTP | Dev mode without HTTPS (for environments without trusted cert) |
-| `Production` | Production | HTTPS | Full stack with Loki + Grafana |
-| `Productionhttp` | Production | HTTP | Same as Production, HTTP only |
+| Profile | Environment | Transport | Stack | Use case |
+|---------|-------------|-----------|-------|----------|
+| `https` | Development | HTTPS | PostgreSQL + Web.Api + Aspire Dashboard | Default for daily development |
+| `http` | Development | HTTP | PostgreSQL + Web.Api + Aspire Dashboard | When dev certificate isn't trusted or HTTPS causes issues |
+| `Production` | Production | HTTPS | PostgreSQL + Web.Api + Loki + Grafana + Aspire Dashboard | Full production-like environment with observability |
+| `Productionhttp` | Production | HTTP | Same as `Production` | When HTTPS isn't needed (local testing, CI) |
+
+##### `https` (Development)
+
+```bash
+dotnet run --launch-profile https --project src/Aspire.AppHost
+```
+
+- **Environment**: `ASPNETCORE_ENVIRONMENT=Development`, `DOTNET_ENVIRONMENT=Development`
+- **Dashboard OTLP**: `ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL=https://localhost:21034` (gRPC)
+- **Resource service**: `ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL=https://localhost:22017`
+- **Web.Api**: Uses `appsettings.Development.json`, developer exception pages, Swagger UI
+- **No Loki/Grafana** — logs go to Aspire Dashboard only
+
+This is the default profile. Use it unless you have a reason not to.
+
+##### `http` (Development)
+
+```bash
+dotnet run --launch-profile http --project src/Aspire.AppHost
+```
+
+- **Environment**: same as `https`
+- **Dashboard OTLP**: `ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL=http://localhost:19291` (HTTP, no TLS)
+- **Resource service**: `ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL=http://localhost:20183`
+- **No HTTPS** — dashboard and resource service use plain HTTP
+
+Use when:
+- You haven't trusted the dev certificate (`dotnet dev-certs https --trust`)
+- Working in an environment where HTTPS causes certificate errors
+- Debugging TLS-related issues
+
+##### `Production`
+
+```bash
+dotnet run --launch-profile Production --project src/Aspire.AppHost
+```
+
+- **Environment**: `ASPNETCORE_ENVIRONMENT=Production`, `DOTNET_ENVIRONMENT=Production`
+- **Dashboard OTLP**: `ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL=http://localhost:3100` → Loki
+- **Resource service**: `ASPIRE_RESOURCE_SERVICE_ENDPOINT_URL=https://localhost:22017`
+- **Transport flag**: `ASPIRE_ALLOW_UNSECURED_TRANSPORT=true` (required because Loki OTLP is HTTP)
+- **Web.Api**: Uses `appsettings.json` (no dev overrides), no Swagger UI, no developer exception pages
+- **Loki** receives OTLP logs from both Web.Api and the Aspire Dashboard
+- **Grafana** at `http://localhost:3000` (admin/admin) — query Loki datasource for logs
+
+Use when testing the production pipeline locally: Loki ingestion, Grafana dashboards, OTLP export.
+
+##### `Productionhttp`
+
+```bash
+dotnet run --launch-profile Productionhttp --project src/Aspire.AppHost
+```
+
+- Same as `Production` but without HTTPS on the application URL
+- **Transport flag**: `ASPIRE_ALLOW_UNSECURED_TRANSPORT=true`
+- Useful for CI pipelines or environments where HTTPS isn't needed
+
+##### Key differences at a glance
+
+| Feature | `https` | `http` | `Production` | `Productionhttp` |
+|---------|---------|--------|--------------|------------------|
+| Environment | Development | Development | Production | Production |
+| HTTPS | ✅ | ❌ | ✅ | ❌ |
+| Loki + Grafana | ❌ | ❌ | ✅ | ✅ |
+| Aspire Dashboard | ✅ | ✅ | ✅ (→ Loki) | ✅ (→ Loki) |
+| Swagger UI | ✅ | ✅ | ❌ | ❌ |
+| Developer exceptions | ✅ | ✅ | ❌ | ❌ |
+| `appsettings` file | `.Development.json` | `.Development.json` | `.json` | `.json` |
 
 #### Switching modes
 
